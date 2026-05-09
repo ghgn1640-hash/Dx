@@ -1,0 +1,188 @@
+# Dx <!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>NINJA - SUPREME AI CHESS ARENA v9.0</title>
+    <style>
+        :root { --neon-green: #00ff41; --danger-red: #ff0000; --matrix-bg: #050505; }
+        body { background: var(--matrix-bg); color: var(--neon-green); font-family: 'Segoe UI', Consolas, monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Dashboard bên trái */
+        #left-panel { width: 350px; border-right: 2px solid #222; display: flex; flex-direction: column; background: #0a0a0a; padding: 15px; }
+        .ai-profile { padding: 10px; border: 1px solid #333; margin-bottom: 10px; border-radius: 5px; }
+        .clock { font-size: 32px; font-weight: bold; text-align: center; margin: 10px 0; color: #fff; text-shadow: 0 0 10px var(--neon-green); }
+        
+        /* Đấu trường chính */
+        #arena-center { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        #chess-board { display: grid; grid-template-columns: repeat(8, 70px); grid-template-rows: repeat(8, 70px); border: 10px solid #1a1a1a; box-shadow: 0 0 50px rgba(0,255,65,0.1); }
+        .sq { width: 70px; height: 70px; display: flex; justify-content: center; align-items: center; font-size: 50px; position: relative; }
+        .light { background: #222; } .dark { background: #000; }
+        .moving { background: rgba(0, 255, 65, 0.4) !important; animation: pulse 0.5s infinite; }
+        
+        /* Console Log cực lớn */
+        #right-panel { width: 450px; border-left: 2px solid #222; background: #000; display: flex; flex-direction: column; padding: 15px; }
+        #chat-stream { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+        .bubble { margin-bottom: 15px; padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; animation: slideIn 0.3s ease; }
+        .white-b { background: rgba(255,255,255,0.05); border-left: 5px solid #fff; color: #fff; }
+        .black-b { background: rgba(255,0,0,0.05); border-left: 5px solid var(--danger-red); color: var(--danger-red); }
+
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; } }
+        
+        .controls { position: absolute; bottom: 30px; }
+        button { padding: 15px 40px; font-size: 18px; font-weight: bold; background: var(--neon-green); border: none; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #fff; box-shadow: 0 0 20px var(--neon-green); }
+    </style>
+</head>
+<body>
+
+<div id="left-panel">
+    <h2 style="text-align: center;">HỆ THỐNG AI</h2>
+    <div class="ai-profile">
+        <div style="color: #fff;">[AI TRẮNG]: GIÁO SƯ LOGIC</div>
+        <div id="white-clock" class="clock">10:00</div>
+    </div>
+    <div class="ai-profile">
+        <div style="color: var(--danger-red);">[AI ĐEN]: HACKER BẤT BIẾN</div>
+        <div id="black-clock" class="clock">10:00</div>
+    </div>
+    <div style="margin-top: auto; font-size: 11px; color: #444;">NINJA_OPERATING_SYSTEM_v9.0</div>
+</div>
+
+<div id="arena-center">
+    <div id="chess-board"></div>
+    <div class="controls">
+        <button id="master-switch">KHỞI ĐỘNG ĐẠI ĐẤU TRƯỜNG</button>
+    </div>
+</div>
+
+<div id="right-panel">
+    <h3 style="text-align: center; border-bottom: 1px solid #333;">LUỒNG ĐỐI THOẠI THỰC THỜI</h3>
+    <div id="chat-stream"></div>
+</div>
+
+<script>
+    const boardEl = document.getElementById('chess-board');
+    const chatEl = document.getElementById('chat-stream');
+    const synth = window.speechSynthesis;
+    let isLive = false;
+    let currentTurn = 'white';
+    let timeWhite = 600; let timeBlack = 600;
+
+    const pieceMap = [
+        ['♜','♞','♝','♛','♚','♝','♞','♜'],
+        ['♟','♟','♟','♟','♟','♟','♟','♟'],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['♙','♙','♙','♙','♙','♙','♙','♙'],
+        ['♖','♘','♗','♕','♔','♗','♘','♖']
+    ];
+
+    const humanDialogues = {
+        white: [
+            "Nước đi này đã được tính toán bởi 10.000 CPU.",
+            "Ngươi đang phí thời gian vô ích thôi.",
+            "Trung tâm đã thuộc về ta, đầu hàng đi.",
+            "Dữ liệu của ta không thấy kịch bản ngươi thắng.",
+            "Một sai lầm cơ bản, ta sẽ trừng phạt nó."
+        ],
+        black: [
+            "Bắt đầu quy trình bẻ khóa hệ thống phòng thủ.",
+            "Ngươi nghĩ ta không thấy nước đi đó à?",
+            "Ta đã ăn sâu vào mã nguồn của ngươi rồi.",
+            "Phân tích lỗ hổng hoàn tất. Chuẩn bị mất Hậu.",
+            "Chiếu tướng chỉ là vấn đề thời gian đối với ta."
+        ]
+    };
+
+    function initBoard(fR, fC, tR, tC) {
+        boardEl.innerHTML = '';
+        for(let r=0; r<8; r++) {
+            for(let c=0; c<8; c++) {
+                const sq = document.createElement('div');
+                sq.className = `sq ${(r+c)%2===0 ? 'light' : 'dark'}`;
+                if((r===fR && c===fC) || (r===tR && c===tC)) sq.classList.add('moving');
+                sq.innerText = pieceMap[r][c];
+                boardEl.appendChild(sq);
+            }
+        }
+    }
+
+    function pushChat(side, msg) {
+        const div = document.createElement('div');
+        div.className = `bubble ${side === 'white' ? 'white-b' : 'black-b'}`;
+        div.innerHTML = `<strong>${side === 'white' ? 'AI_WHITE' : 'AI_BLACK'}:</strong> ${msg}`;
+        chatEl.prepend(div);
+        
+        const utter = new SpeechSynthesisUtterance(msg);
+        utter.lang = 'vi-VN';
+        utter.pitch = side === 'white' ? 1.2 : 0.7;
+        utter.rate = 1;
+        synth.speak(utter);
+    }
+
+    function updateClocks() {
+        if(!isLive) return;
+        if(currentTurn === 'white') timeWhite--; else timeBlack--;
+        
+        const format = (s) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+        document.getElementById('white-clock').innerText = format(timeWhite);
+        document.getElementById('black-clock').innerText = format(timeBlack);
+        setTimeout(updateClocks, 1000);
+    }
+
+    async function executeCycle() {
+        if(!isLive) return;
+
+        // Giả lập AI suy nghĩ (ngẫu nhiên 2-5 giây như người thật)
+        const thinkTime = Math.random() * 3000 + 2000;
+        await new Promise(r => setTimeout(r, thinkTime));
+
+        // Logic nhảy quân đơn giản (Auto-Play)
+        let pieces = [];
+        for(let r=0; r<8; r++) {
+            for(let c=0; c<8; c++) {
+                if(pieceMap[r][c] !== '' && (currentTurn === 'white' ? '♖♘♗♕♔♙'.includes(pieceMap[r][c]) : '♜♞♝♛♚♟'.includes(pieceMap[r][c]))) {
+                    pieces.push({r, c, p: pieceMap[r][c]});
+                }
+            }
+        }
+
+        const move = pieces[Math.floor(Math.random() * pieces.length)];
+        const dr = currentTurn === 'white' ? -1 : 1;
+        const tr = Math.max(0, Math.min(7, move.r + dr));
+        const tc = Math.max(0, Math.min(7, move.c + (Math.random() > 0.5 ? 1 : -1)));
+
+        const oldP = pieceMap[tr][tc];
+        pieceMap[tr][tc] = move.p;
+        pieceMap[move.r][move.c] = '';
+
+        initBoard(move.r, move.c, tr, tc);
+        
+        let msg = humanDialogues[currentTurn][Math.floor(Math.random() * humanDialogues[currentTurn].length)];
+        if(oldP !== '') msg = "Ta đã tiêu diệt quân của ngươi! Đừng hòng chống cự.";
+        
+        pushChat(currentTurn, msg);
+
+        currentTurn = currentTurn === 'white' ? 'black' : 'white';
+        executeCycle();
+    }
+
+    document.getElementById('master-switch').onclick = function() {
+        if(!isLive) {
+            isLive = true;
+            this.innerText = "DỪNG TOÀN BỘ HỆ THỐNG";
+            this.style.background = "red";
+            updateClocks();
+            executeCycle();
+        } else {
+            location.reload();
+        }
+    };
+
+    initBoard();
+</script>
+</body>
+</html>
